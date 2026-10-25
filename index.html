@@ -379,8 +379,13 @@ function drawTimeline() {
   ctx.beginPath(); let started = false;
   est.forEach(([e, v]) => { const x = pL + (e - ROWS[0].e) / (ROWS[ROWS.length-1].e - ROWS[0].e) * pw; const y = pT + ph * (1 - (v - 20) / 80); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; });
   ctx.stroke(); ctx.setLineDash([]);
+  // display smoothing: 5-point rolling median (usage math below uses RAW rows, untouched)
+  const smP = pts.map((r, idx) => {
+    const w = pts.slice(Math.max(0, idx - 2), idx + 3).map(p => p.pct).sort((a, b) => a - b);
+    return w[Math.floor(w.length / 2)];
+  });
   ctx.strokeStyle = "#0b66c3"; ctx.lineWidth = 2; ctx.beginPath();
-  pts.forEach((r, idx) => { const x = pL + idx / (pts.length - 1) * pw; const y = pT + ph * (1 - (Math.max(20, Math.min(100, r.pct)) - 20) / 80); idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  pts.forEach((r, idx) => { const x = pL + idx / (pts.length - 1) * pw; const y = pT + ph * (1 - (Math.max(20, Math.min(100, smP[idx])) - 20) / 80); idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
   ctx.stroke();
 }
 
