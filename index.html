@@ -224,9 +224,16 @@ function buildEngine() {
   while (i < ROWS.length) {
     const a = ROWS[i-1], b = ROWS[i];
     const gap = b.e - a.e;
+    if (a.pump === "ON" && b.pump !== "ON") {           // ON -> OFF transition: close the fill run
+      const day = dayOf(bd(b.e).date);
+      day.stored = (day.stored || 0) + Math.max(0, day.storedRun - day.storedRunNeg);   // NET rise = stored
+      day.storedRun = 0; day.storedRunNeg = 0;
+    }
     if (b.pump === "ON" || a.pump === "ON") {           // relay ON interval: stored, not usage
       const day = dayOf(bd(b.e).date);
       day.pumpMin[bd(b.e).hh] += gap / 60;
+      day.storedRun = (day.storedRun === undefined ? 0 : day.storedRun) + Math.max(0, (b.pct - a.pct) * LPCT);
+      day.storedRunNeg = (day.storedRunNeg || 0) + Math.max(0, (a.pct - b.pct) * LPCT);
       i++; continue;
     }
     if (gap > 1200) { i++; continue; }                  // long outage: NO DATA, no lies
@@ -263,13 +270,29 @@ function buildEngine() {
       } else if (rise >= 100 && elapsed >= 3 && riseAfterMin1 >= 15) {
         const day = dayOf(bd(t1).date), h = bd(t1).hh;
         day.manualMin[h] += elapsed;                        // confirmed manual minutes
+        day.manualGain = (day.manualGain || 0) + rise;      // water-balance inflow
         runT = t1; runLvl = L; runMax = L; lvlAtMin1 = null;                // continue tracking
       }
     }
     i = j + 1;
   }
-  // round hours
-  for (const d of DAY_KEYS) DAYS[d].hours = DAYS[d].hours.map(h => h === null ? null : Math.max(0, Math.round(h)));
+  // ---- WATER BALANCE: day total = pump stored + confirmed manual + tank drawdown ----
+  // (delivered - change in storage). No engine opinions survive this number.
+  for (const d of DAY_KEYS) {
+    const dd = DAYS[d];
+    const dayRows = ROWS.filter(r => r.date === d);
+    const startL = dayRows.length ? dayRows[0].pct : null;
+    const endL = dayRows.length ? dayRows[dayRows.length - 1].pct : null;
+    const drawdown = (startL !== null && endL !== null) ? Math.max(0, (startL - endL) * LPCT) : 0;
+    dd.dayTotal = Math.round((dd.stored || 0) + (dd.manualGain || 0) + drawdown);
+    dd.manualGain = Math.round(dd.manualGain || 0);
+    const sum = dd.hours.reduce((s, v) => s + (v || 0), 0);
+    if (sum > 0 && dd.dayTotal > 0) {
+      const f = dd.dayTotal / sum;
+      dd.hours = dd.hours.map(v => v === null ? null : v * f);
+    }
+    dd.hours = dd.hours.map(h => h === null ? null : Math.max(0, Math.round(h)));
+  }
   DAY_KEYS.sort();
 }
 
@@ -306,8 +329,8 @@ function renderDaily() {
   document.getElementById("btnPrevD").disabled = dayIdx <= 0;
   document.getElementById("btnNextD").disabled = dayIdx >= DAY_KEYS.length - 1;
   const dd = DAYS[d];
-  const total = dd.hours.reduce((s, v) => s + (v || 0), 0);
-  const man = Math.round(Object.values(dd.manualMin).reduce((s, v) => s + v, 0));
+  const total = dd.dayTotal !== undefined ? dd.dayTotal : dd.hours.reduce((s, v) => s + (v || 0), 0);
+  const man = dd.manualGain !== undefined ? dd.manualGain : Math.round(Object.values(dd.manualMin).reduce((s, v) => s + v, 0));
   const kwh = ((DAY_KEYS.reduce((s, k) => s + DAYS[k].pumpMin.reduce((a, v) => a + v, 0), 0) === 0 ? 0 : (dd.pumpMin.reduce((a,v)=>a+v,0)) / 60) * CFG.kw);
   document.getElementById("dailyHead").innerHTML = `${d} • <span class="text-orange-700">${total.toLocaleString()} L total</span> • ⚡ ${kwh.toFixed(1)} kWh ≈ ৳${Math.round(kwh * CFG.rate)} • <span class="text-purple-800">manual: ${man} L</span>`;
   renderBars("dailyChart", dd.hours);
