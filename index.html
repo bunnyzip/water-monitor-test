@@ -242,25 +242,29 @@ function buildEngine() {
     const lead = perMin.filter(x => Math.abs(x[2]) < 80);
     const corrupt = (() => { let f = 0, ps = 0; for (const [, , d] of lead) { if (Math.abs(d) >= 55) { const s = d > 0 ? 1 : -1; if (ps && s !== ps) f++; ps = s; } } return f >= 3; })();
     if (corrupt) { i = j + 1; continue; }               // region: NO DATA (false -> ignored)
-    // manual-fill rise corridor (sustained rise while relay OFF) -> purple minutes
-    let runStart = -1, acc = 0;
+    // manual pump (independent switch, relay OFF): window-based detection.
+    // A real fill = total rise >= 100 L, still moving after the first minute
+    // (an equalization step is a single jump then flat - NOT a pump), lasting >= 3 min,
+    // tolerating slosh dips up to 80 L. Confirmed minutes become purple.
+    let runT = -1, runLvl = null, runMax = null, lvlAtMin1 = null;
     for (let q = 0; q < perMin.length; q++) {
       const [t0, t1, d] = perMin[q];
-      if (d < -3) { if (runStart < 0) runStart = t0; acc += -d; }
-      else {
-        if (runStart >= 0 && acc >= 100) {
-          const day = dayOf(bd(runStart).date);
-          const h = bd(runStart).hh;
-          day.manualMin[h] += (t0 - runStart) / 60;
-        }
-        runStart = d < -3 ? runStart : -1; acc = d < -3 ? acc : 0;
-        if (d >= 0) { runStart = -1; acc = 0; }
-        bucket(Math.max(0, d), t0, t1);
+      const L = Math.min(ROWS[i + q].pct, 100);
+      bucket(Math.max(0, d), t0, t1);                       // drains count; rises are inflow
+      if (runT < 0) { runT = t0; runLvl = L; runMax = L; lvlAtMin1 = null; }
+      runMax = Math.max(runMax, L);
+      const drawdown = (runMax - L) * LPCT;
+      const rise = (L - runLvl) * LPCT;
+      const elapsed = (t1 - runT) / 60;
+      if (t1 - runT >= 60 && lvlAtMin1 === null) lvlAtMin1 = L;
+      const riseAfterMin1 = lvlAtMin1 !== null ? (L - lvlAtMin1) * LPCT : 0;
+      if (drawdown > 80 || (rise >= 100 && elapsed >= 10 && riseAfterMin1 < 15)) {
+        runT = t1; runLvl = L; runMax = L; lvlAtMin1 = null;               // run over / static jump
+      } else if (rise >= 100 && elapsed >= 3 && riseAfterMin1 >= 15) {
+        const day = dayOf(bd(t1).date), h = bd(t1).hh;
+        day.manualMin[h] += elapsed;                        // confirmed manual minutes
+        runT = t1; runLvl = L; runMax = L; lvlAtMin1 = null;                // continue tracking
       }
-    }
-    if (runStart >= 0 && acc >= 100) {
-      const day = dayOf(bd(runStart).date), h = bd(runStart).hh;
-      day.manualMin[h] += (perMin[perMin.length-1][1] - runStart) / 60;
     }
     i = j + 1;
   }
