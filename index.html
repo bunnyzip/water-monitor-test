@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MAHMUD MONITOR TEST — Firebase Water Report</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #071320; margin: 0; }
+    .hero-banner { background: linear-gradient(180deg, #008cff 0%, #006be6 60%, #0055c4 100%); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,110,255,.25); }
+    .hero-pill { background: rgba(8,47,94,.55); border: 1px solid rgba(135,206,250,.35); color: #e0f2fe; border-radius: 9999px; padding: 5px 14px; font-size: .82rem; font-weight: 600; display: inline-flex; gap: 6px; }
+    .report-card { background: #fff; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: 20px 24px; margin-bottom: 20px; }
+    .section-title { display: inline-flex; align-items: center; gap: 8px; font-size: 1.12rem; font-weight: 800; color: #034ea2; border-bottom: 2.5px solid #00b4ff; padding-bottom: 6px; }
+    .nav-pill { background: #f1f5f9; color: #1e293b; font-weight: 600; font-size: .8rem; padding: 7px 13px; border-radius: 8px; border: 1px solid #e2e8f0; cursor: pointer; }
+    .nav-pill:hover { background: #e2e8f0; }
+    .nav-pill.active { background: #0b66c3; color: #fff; border-color: #0b66c3; }
+    .kpi-card { background: linear-gradient(180deg,#eef7ff,#e3f1ff); border: 1.5px solid #c7e0ff; border-radius: 12px; padding: 14px; text-align: center; min-height: 110px; }
+    .kpi-card.green-highlight { background: linear-gradient(180deg,#f0fdf4,#dcfce7); border: 2px solid #2e7d32; }
+    .tank-cylinder { position: relative; width: 140px; height: 188px; background: linear-gradient(90deg,#dde5ed,#f1f5f9 50%,#cfd8e3); border: 3px solid #3b5978; border-radius: 16px; overflow: hidden; }
+    .tank-water { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(180deg,#1ea7fd,#0077cc 55%,#004e92); transition: height .7s cubic-bezier(.22,1,.36,1); }
+    .tank-line { position: absolute; left: 0; right: 0; border-top: 2px dashed; z-index: 5; }
+    .bar-chart-grid { display: grid; grid-template-columns: repeat(24, minmax(0,1fr)); gap: 6px; align-items: end; height: 230px; padding: 26px 0 24px; }
+    .bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+    .bar-val { font-size: .7rem; font-weight: 800; margin-bottom: 4px; color: #0b4f9c; white-space: nowrap; }
+    .bar-fill { width: 100%; border-radius: 5px 5px 3px 3px; display: flex; align-items: flex-end; justify-content: center; min-height: 12px; overflow: hidden; }
+    .bar-fill.peak { background: linear-gradient(180deg,#ff5757,#f03e3e); }
+    .bar-fill.normal { background: linear-gradient(180deg,#63bd63,#4cae4c); }
+    .bar-fill.quiet { background: linear-gradient(180deg,#33bfff,#1aa6e8); }
+    .bar-fill.nodata { background: #cbd5e1; height: 88px !important; align-items: center; }
+    .bar-hour-inside { writing-mode: vertical-rl; transform: rotate(180deg); font-size: .66rem; font-weight: 700; color: #fff; padding: 6px 0; white-space: nowrap; }
+    .bar-hour-outside { position: absolute; bottom: -19px; font-size: .62rem; font-weight: 600; color: #0b66c3; }
+    .day-nav-btn { background: #0b66c3; color: #fff; width: 38px; height: 34px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .day-nav-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+    .badge { background: #0b5ed7; color: #fff; font-size: .7rem; font-weight: 700; padding: 4px 12px; border-radius: 9999px; }
+    #sfBanner { display: none; background: linear-gradient(90deg,#b71c1c,#e53935); color: #fff; padding: 12px 18px; border-radius: 10px; font-weight: bold; margin: 10px 0; }
+    @media (max-width: 900px) { .bar-chart-grid { overflow-x: auto; grid-template-columns: repeat(24, 30px); } }
+  </style>
+</head>
+<body class="p-3 sm:p-6">
+<div class="max-w-[1260px] mx-auto">
+
+  <header class="hero-banner p-5 sm:p-7 text-white mb-5">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">💧 MAHMUD MONITOR TEST — Firebase Report</h1>
+        <p class="text-xs sm:text-sm text-sky-100 mt-1.5" id="heroSubtitle">
+          <span id="connStatus">connecting to Firebase…</span> • Tank Capacity: <strong class="text-white">1,950 L</strong>
+        </p>
+      </div>
+      <button onclick="syncFirebase()" id="btnSync" class="bg-white/15 hover:bg-white/25 border border-white/30 text-white text-xs font-bold px-3.5 py-2 rounded-lg no-print">🔄 Sync Now</button>
+    </div>
+    <div class="flex flex-wrap items-center gap-2.5 mt-4">
+      <div class="hero-pill">Mode: <strong class="text-white" id="pillMode">—</strong></div>
+      <div class="hero-pill">Trigger Band: <strong class="text-white" id="pillBand">—</strong></div>
+      <div class="hero-pill">Cycles: <strong class="text-white" id="pillCycles">—</strong></div>
+      <div class="hero-pill">Firmware: <strong class="text-white" id="pillFw">—</strong></div>
+    </div>
+  </header>
+
+  <nav class="bg-white rounded-xl p-3 mb-5 shadow-lg flex flex-wrap gap-2 no-print">
+    <button class="nav-pill active" onclick="scrollTo2('sec-live',this)">🔴 Live</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-daily',this)">📅 Day-by-Day</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-profile',this)">🕒 Hourly Profile</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-clocks',this)">⏱️ Pump Clocks</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-timeline',this)">📈 Level Timeline</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-cycles',this)">🔄 Fill Cycles</button>
+    <button class="nav-pill" onclick="scrollTo2('sec-raw',this)">🔍 Raw Explorer</button>
+  </nav>
+
+  <div id="sfBanner">⚠ SENSOR FAULT &amp; PUMP RUNNING — <button onclick="sendStop()" style="background:#fff;color:#b71c1c;border:0;padding:6px 12px;border-radius:6px;font-weight:bold;cursor:pointer;">STOP PUMP NOW</button></div>
+
+  <section id="sec-live" class="report-card">
+    <h2 class="section-title mb-4"><span>🔴</span> Live Right Now</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div class="lg:col-span-3 flex flex-col items-center p-4 rounded-xl border border-blue-100 bg-blue-50/50">
+        <div class="tank-cylinder">
+          <div class="tank-line" id="cutLine" style="bottom:80%;border-color:#1b8a3d;"></div>
+          <div class="tank-line" id="trigLine" style="bottom:50%;border-color:#0b66c3;"></div>
+          <div class="tank-water" id="waterFill" style="height:0%"></div>
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-white z-10" style="text-shadow:0 1px 3px rgba(0,0,0,.8)">
+            <span class="text-2xl font-black" id="tankPct">—</span>
+            <span class="text-xs font-bold" id="tankL">—</span>
+          </div>
+        </div>
+        <div class="text-center mt-3 text-[11px] font-bold text-[#0b66c3]" id="tankCap">Cutoff: — • Trigger: —</div>
+      </div>
+      <div class="lg:col-span-9 grid grid-cols-2 md:grid-cols-4 gap-3 content-start">
+        <div class="kpi-card green-highlight"><div class="text-2xl font-black text-green-900" id="kWater">—</div><div class="text-xs font-bold mt-1">Water in Tank</div><div class="text-[11px] text-slate-500" id="kWaterSub">—</div></div>
+        <div class="kpi-card"><div class="text-2xl font-black text-[#034ea2]" id="kPump">—</div><div class="text-xs font-bold mt-1">Pump State</div><div class="text-[11px] text-slate-500" id="kPumpSub">—</div></div>
+        <div class="kpi-card"><div class="text-2xl font-black text-[#034ea2]" id="kFault">—</div><div class="text-xs font-bold mt-1">Sensor Fault</div><div class="text-[11px] text-slate-500" id="kFaultSub">—</div></div>
+        <div class="kpi-card"><div class="text-2xl font-black text-[#034ea2]" id="kFw">—</div><div class="text-xs font-bold mt-1">Firmware / Slot</div><div class="text-[11px] text-slate-500" id="kFwSub">—</div></div>
+        <div class="kpi-card md:col-span-4 text-left"><div class="text-sm font-black text-[#034ea2]" id="kEta">🔮 Waiting for data…</div><div class="text-[11px] text-slate-500 mt-1" id="kLast">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-daily" class="report-card">
+    <h2 class="section-title mb-3"><span>📅</span> Daily Water Usage (Refined)</h2>
+    <div class="flex items-center justify-between gap-2 my-3 bg-slate-50 px-3 py-2 rounded-xl border">
+      <button class="day-nav-btn" id="btnPrevD" onclick="shiftDay(-1)">◀</button>
+      <div class="text-center text-sm font-extrabold text-[#034ea2]" id="dailyHead">—</div>
+      <button class="day-nav-btn" id="btnNextD" onclick="shiftDay(1)">▶</button>
+    </div>
+    <div id="dailyChart" class="bar-chart-grid"></div>
+    <p class="text-[11px] text-slate-500 mt-3">Hours where the sensor was faulty show NO DATA — false readings are ignored, never invented. Refinement markers from the firmware are honored.</p>
+  </section>
+
+  <section id="sec-profile" class="report-card">
+    <h2 class="section-title mb-3"><span>🕒</span> Average Hourly Profile (all logged days)</h2>
+    <div id="profileChart" class="bar-chart-grid"></div>
+  </section>
+
+  <section id="sec-clocks" class="report-card">
+    <h2 class="section-title mb-3"><span>⏱️</span> Pump Clocks — <span id="clockDay" class="text-sm">—</span></h2>
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <button class="day-nav-btn" id="btnPrevC" onclick="shiftClock(-1)">◀</button>
+      <div class="text-sm font-extrabold text-[#034ea2]" id="clockHead">—</div>
+      <button class="day-nav-btn" id="btnNextC" onclick="shiftClock(1)">▶</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+      <div id="clockAM" class="flex justify-center"></div>
+      <div id="clockPM" class="flex justify-center"></div>
+    </div>
+    <p class="text-[11px] text-slate-500">Green = relay pump minutes • Purple = manual pump (relay OFF) • each slice = one hour, 12 o'clock at top.</p>
+  </section>
+
+  <section id="sec-timeline" class="report-card">
+    <h2 class="section-title mb-3"><span>📈</span> Water Level Timeline (canvas)</h2>
+    <div class="w-full h-[240px] bg-slate-50 border rounded-xl p-2"><canvas id="tlCanvas" class="w-full h-full"></canvas></div>
+    <p class="text-[11px] text-slate-500 mt-2">Green shading = pump ON • S-curve dashed = estimated through sensor-fault zones.</p>
+  </section>
+
+  <section id="sec-cycles" class="report-card">
+    <h2 class="section-title mb-3"><span>🔄</span> Detected Fill Cycles</h2>
+    <div class="max-h-[240px] overflow-y-auto border rounded-lg">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-[#0d5cab] text-white sticky top-0"><tr>
+          <th class="py-2 px-3">#</th><th class="py-2 px-3">Start → End</th><th class="py-2 px-3">Level</th><th class="py-2 px-3">Stored</th><th class="py-2 px-3">Duration</th>
+        </tr></thead>
+        <tbody id="cyclesBody" class="divide-y"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sec-raw" class="report-card">
+    <h2 class="section-title mb-3"><span>🔍</span> Raw Explorer (<span id="rawTotal">0</span> rows)</h2>
+    <div class="flex flex-wrap gap-3 mb-3">
+      <input id="rawQ" oninput="rawPage=1;renderRaw()" placeholder="search timestamp / %" class="border rounded-lg px-3 py-2 text-xs w-60" />
+      <select id="rawP" onchange="rawPage=1;renderRaw()" class="border rounded-lg px-3 py-2 text-xs">
+        <option value="ALL">All pump states</option><option value="ON">ON only</option><option value="OFF">OFF only</option>
+      </select>
+    </div>
+    <div class="text-xs text-slate-500 mb-2" id="rawMatch"></div>
+    <div class="max-h-[420px] overflow-y-auto border rounded-lg">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-[#0d5cab] text-white sticky top-0"><tr>
+          <th class="py-2 px-3">#</th><th class="py-2 px-3">Timestamp</th><th class="py-2 px-3 text-right">%</th><th class="py-2 px-3 text-right">L</th><th class="py-2 px-3 text-right">Δ</th><th class="py-2 px-3">Pump</th>
+        </tr></thead>
+        <tbody id="rawBody" class="divide-y"></tbody>
+      </table>
+    </div>
+    <div class="flex items-center justify-between mt-3">
+      <button id="btnRawPrev" onclick="rawPage--;renderRaw()" class="px-4 py-2 rounded-lg border bg-blue-50 text-[#0b66c3] text-xs font-bold">◀ Prev</button>
+      <span class="text-xs font-bold text-[#034ea2]" id="rawPageInfo">—</span>
+      <button id="btnRawNext" onclick="rawPage++;renderRaw()" class="px-4 py-2 rounded-lg border bg-blue-50 text-[#0b66c3] text-xs font-bold">Next ▶</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ================= CONFIG =================
+const FB = "https://tank-monitor-d9174-default-rtdb.asia-southeast1.firebasedatabase.app";
+const AUTH = "tn8ygd7O6ZjqUHcG6UKI0u9hByJe03ZocEuM66np";
+const LPCT = 19.5;
+let CFG = { trig: 60, cut: 80, kw: 2.0, rate: 10 };
+let ROWS = [];            // chronological refined/real rows {ts,pct,pump,date,hh,e}
+let DAYS = {};            // date -> {hours[24], pumpMin[24], manualMin[24], fills[]}
+let DAY_KEYS = [];
+let dayIdx = 0, clockIdx = 0, rawPage = 1;
+let sawSet = new Set();
+
+const bd = e => { const d = new Date((e + 21600) * 1000), p = n => String(n).padStart(2, "0");
+  return { date: d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate()), hh: d.getUTCHours(),
+           ts: d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes())+":"+p(d.getUTCSeconds()) }; };
+const hourLabel = h => h === 0 ? "12 AM" : h < 12 ? h + " AM" : h === 12 ? "12 PM" : (h-12) + " PM";
+const scrollTo2 = (id, btn) => { document.querySelectorAll(".nav-pill").forEach(b => b.classList.remove("active")); if (btn) btn.classList.add("active"); const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth" }); };
+
+// ================= SAWTOOTH DETECTOR (sensor-fault zones) =================
+function sawtoothSet() {
+  const set = new Set();
+  let stamps = [], prevSign = 0, flips = 0, stable = 0, prevT = null, prevPct = null;
+  for (const r of ROWS) {
+    if (prevT !== null && r.e - prevT > 180) { if (flips >= 2) stamps.forEach(x => set.add(x)); stamps = []; prevSign = 0; flips = 0; stable = 0; }
+    stamps.push(r.e);
+    if (r.pump !== "ON" && prevPct !== null && prevT !== null && r.e > prevT) {
+      const d = (prevPct - r.pct) * LPCT, big = Math.abs(d) >= 55, sgn = d > 0 ? 1 : -1;
+      if (big && prevSign !== 0 && sgn !== prevSign) flips++;
+      if (big) { prevSign = sgn; stable = 0; }
+      else { stable++; if (stable >= 6) { if (flips >= 2) stamps.forEach(x => set.add(x)); stamps = [r.e]; prevSign = 0; flips = 0; stable = 0; } }
+    }
+    prevT = r.e; prevPct = r.pct;
+  }
+  if (flips >= 2) stamps.forEach(x => set.add(x));
+  return set;
+}
+
+// ================= ENGINE (verified: signed per-interval + fill windows + region NO DATA) =================
+function buildEngine() {
+  sawSet = sawtoothSet();
+  DAYS = {}; DAY_KEYS = [];
+  const dayOf = d => { if (!DAYS[d]) { DAYS[d] = { hours: Array(24).fill(null), pumpMin: Array(24).fill(0), manualMin: Array(24).fill(0), fills: [] }; DAY_KEYS.push(d); } return DAYS[d]; };
+  const bucket = (liters, t0, t1) => {
+    const totalMin = (t1 - t0) / 60; let tt = t0;
+    while (tt < t1 - 0.001) {
+      const nxt = tt - (tt % 3600) + 3600;
+      const span = Math.min(nxt, t1) - tt;
+      const p = bd(tt), day = dayOf(p.date);
+      day.hours[p.hh] = (day.hours[p.hh] || 0) + liters * (span / 60) / totalMin;
+      tt = nxt;
+    }
+  };
+  let i = 1;
+  while (i < ROWS.length) {
+    const a = ROWS[i-1], b = ROWS[i];
+    const gap = b.e - a.e;
+    if (b.pump === "ON" || a.pump === "ON") {           // relay ON interval: stored, not usage
+      const day = dayOf(bd(b.e).date);
+      day.pumpMin[bd(b.e).hh] += gap / 60;
+      i++; continue;
+    }
+    if (gap > 1200) { i++; continue; }                  // long outage: NO DATA, no lies
+    // OFF stretch: i-1 .. j
+    let j = i;
+    while (j < ROWS.length && ROWS[j].pump !== "ON" && ROWS[j].e - ROWS[j-1].e <= 1200) j++;
+    j--;
+    // corrupt gate
+    const perMin = [];
+    for (let q = i; q <= j; q++) perMin.push([ROWS[q-1].e, ROWS[q].e, (ROWS[q-1].pct - ROWS[q].pct) * LPCT]);
+    let flips = 0, prevSign = 0;
+    for (const [, , d] of perMin) { if (Math.abs(d) >= 55) { const s = d > 0 ? 1 : -1; if (prevSign && s !== prevSign) flips++; prevSign = s; } }
+    const lead = perMin.filter(x => Math.abs(x[2]) < 80);
+    const corrupt = (() => { let f = 0, ps = 0; for (const [, , d] of lead) { if (Math.abs(d) >= 55) { const s = d > 0 ? 1 : -1; if (ps && s !== ps) f++; ps = s; } } return f >= 3; })();
+    if (corrupt) { i = j + 1; continue; }               // region: NO DATA (false -> ignored)
+    // manual-fill rise corridor (sustained rise while relay OFF) -> purple minutes
+    let runStart = -1, acc = 0;
+    for (let q = 0; q < perMin.length; q++) {
+      const [t0, t1, d] = perMin[q];
+      if (d < -3) { if (runStart < 0) runStart = t0; acc += -d; }
+      else {
+        if (runStart >= 0 && acc >= 100) {
+          const day = dayOf(bd(runStart).date);
+          const h = bd(runStart).hh;
+          day.manualMin[h] += (t0 - runStart) / 60;
+        }
+        runStart = d < -3 ? runStart : -1; acc = d < -3 ? acc : 0;
+        if (d >= 0) { runStart = -1; acc = 0; }
+        bucket(Math.max(0, d), t0, t1);
+      }
+    }
+    if (runStart >= 0 && acc >= 100) {
+      const day = dayOf(bd(runStart).date), h = bd(runStart).hh;
+      day.manualMin[h] += (perMin[perMin.length-1][1] - runStart) / 60;
+    }
+    i = j + 1;
+  }
+  // round hours
+  for (const d of DAY_KEYS) DAYS[d].hours = DAYS[d].hours.map(h => h === null ? null : Math.max(0, Math.round(h)));
+  DAY_KEYS.sort();
+}
+
+// ================= RENDER: BARS =================
+function renderBars(containerId, hours) {
+  const el = document.getElementById(containerId);
+  const valid = hours.filter(v => v !== null && !isNaN(v));
+  const maxV = Math.max(...valid, 100);
+  const sorted = [...valid].sort((a,b) => b-a);
+  const peakCut = sorted[2] ?? 9999;
+  const asc = [...valid].sort((a,b) => a-b);
+  const quietCut = asc[3] ?? -1;
+  el.innerHTML = hours.map((v, h) => {
+    const hl = hourLabel(h);
+    if (v === null || isNaN(v)) return `<div class="bar-col"><div class="bar-fill nodata"><span class="bar-hour-inside !text-slate-600">NO DATA</span></div><span class="bar-hour-outside !text-slate-400">${hl}</span></div>`;
+    const hp = Math.max(12, Math.round(v / maxV * 165));
+    let cls = "normal";
+    if (v >= peakCut) cls = "peak"; else if (v <= quietCut) cls = "quiet";
+    const short = hp < 48;
+    return `<div class="bar-col"><div class="bar-val">${Math.round(v)} L</div><div class="bar-fill ${cls}" style="height:${hp}px">${!short ? `<span class="bar-hour-inside">${hl}</span>` : ""}</div>${short ? `<span class="bar-hour-outside">${hl}</span>` : ""}</div>`;
+  }).join("");
+}
+function renderProfile() {
+  const mean = Array.from({length:24}, (_, h) => {
+    let sum = 0, c = 0;
+    DAY_KEYS.forEach(d => { const v = DAYS[d].hours[h]; if (v !== null && v !== undefined) { sum += v; c++; } });
+    return c ? Math.round(sum / c) : null;
+  });
+  renderBars("profileChart", mean);
+}
+function shiftDay(d) { const n = dayIdx + d; if (n >= 0 && n < DAY_KEYS.length) { dayIdx = n; renderDaily(); } }
+function renderDaily() {
+  const d = DAY_KEYS[dayIdx]; if (!d) return;
+  document.getElementById("btnPrevD").disabled = dayIdx <= 0;
+  document.getElementById("btnNextD").disabled = dayIdx >= DAY_KEYS.length - 1;
+  const dd = DAYS[d];
+  const total = dd.hours.reduce((s, v) => s + (v || 0), 0);
+  const man = Math.round(Object.values(dd.manualMin).reduce((s, v) => s + v, 0));
+  const kwh = ((DAY_KEYS.reduce((s, k) => s + DAYS[k].pumpMin.reduce((a, v) => a + v, 0), 0) === 0 ? 0 : (dd.pumpMin.reduce((a,v)=>a+v,0)) / 60) * CFG.kw);
+  document.getElementById("dailyHead").innerHTML = `${d} • <span class="text-orange-700">${total.toLocaleString()} L total</span> • ⚡ ${kwh.toFixed(1)} kWh ≈ ৳${Math.round(kwh * CFG.rate)} • <span class="text-purple-800">manual: ${man} L</span>`;
+  renderBars("dailyChart", dd.hours);
+}
+
+// ================= RENDER: CLOCKS =================
+function sector(cx, cy, rIn, rOut, sDeg, eDeg, fill) {
+  const sr = sDeg * Math.PI / 180, er = eDeg * Math.PI / 180;
+  const p = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const [x1, y1] = p(rOut, sr), [x2, y2] = p(rOut, er), [x3, y3] = p(rIn, er), [x4, y4] = p(rIn, sr);
+  return `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${rOut} ${rOut} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)} L ${x3.toFixed(1)} ${y3.toFixed(1)} A ${rIn} ${rIn} 0 0 0 ${x4.toFixed(1)} ${y4.toFixed(1)} Z" fill="${fill}" />`;
+}
+function clockSvg(title, mins, manual, slices, manSlices, dateStr) {
+  const size = 280, cx = 140, cy = 140, rOut = 108, rIn = 70;
+  let html = "";
+  for (let h = 0; h < 12; h++) {
+    const s = -90 + h * 30 - 14;
+    html += sector(cx, cy, rIn, rOut, s, s + 28, "#eaeeef");
+    const gm = Math.min(60, slices[h] || 0);
+    if (gm > 0) html += sector(cx, cy, rIn, rOut, s, s + Math.max(4, gm / 60 * 28), "#1e7e34");
+    const pm = Math.min(60, (manSlices && manSlices[h]) || 0);
+    if (pm > 0) html += sector(cx, cy, rIn, rOut, s + Math.min(28 - 4, gm / 60 * 28), s + 28, "#7b1fa2");
+    const a = (-90 + h * 30) * Math.PI / 180;
+    html += `<text x="${(cx + 128 * Math.cos(a)).toFixed(1)}" y="${(cy + 128 * Math.sin(a) + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="#334155">${h === 0 ? 12 : h}</text>`;
+  }
+  return `<div class="relative"><svg width="${size}" height="${size}">${html}</svg>
+    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+      <div class="text-2xl font-black text-green-900">${mins}m</div><div class="text-[11px] text-slate-500">pump ON${manual ? " (" + manual + "m manual)" : ""}</div>
+      <div class="text-[10px] text-slate-400 mt-1">${title}</div><div class="text-[10px] font-bold text-[#034ea2]">${dateStr}</div>
+    </div></div>`;
+}
+function shiftClock(d) { const n = clockIdx + d; if (n >= 0 && n < DAY_KEYS.length) { clockIdx = n; renderClocks(); } }
+function renderClocks() {
+  const d = DAY_KEYS[clockIdx]; if (!d) return;
+  document.getElementById("btnPrevC").disabled = clockIdx <= 0;
+  document.getElementById("btnNextC").disabled = clockIdx >= DAY_KEYS.length - 1;
+  const dd = DAYS[d];
+  const am = dd.pumpMin.slice(0, 12).reduce((a, v) => a + v, 0), pm = dd.pumpMin.slice(12).reduce((a, v) => a + v, 0);
+  document.getElementById("clockHead").textContent = `${d} • ${Math.round(am + pm)} min pump ON • ${Math.round(Object.values(dd.manualMin).reduce((a, v) => a + v, 0))} min manual`;
+  document.getElementById("clockAM").innerHTML = clockSvg("AM", Math.round(am), 0, dd.pumpMin.slice(0, 12), null, d);
+  document.getElementById("clockPM").innerHTML = clockSvg("PM", Math.round(pm), Math.round(dd.manualMin.slice(12).reduce((a, v) => a + v, 0)), dd.pumpMin.slice(12), dd.manualMin.slice(12), d);
+}
+
+// ================= RENDER: TIMELINE CANVAS =================
+function drawTimeline() {
+  const c = document.getElementById("tlCanvas"); if (!c || !ROWS.length) return;
+  const ctx = c.getContext("2d");
+  const rect = c.parentElement.getBoundingClientRect();
+  c.width = Math.max(300, rect.width - 16); c.height = Math.max(180, rect.height - 16);
+  const W = c.width, H = c.height, pL = 40, pR = 12, pT = 12, pB = 22;
+  const pw = W - pL - pR, ph = H - pT - pB;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "#e2e8f0"; ctx.fillStyle = "#64748b"; ctx.font = "10px sans-serif";
+  [20, 40, 60, 80, 100].forEach(p => { const y = pT + ph * (1 - (p - 20) / 80); ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(W - pR, y); ctx.stroke(); ctx.fillText(p + "%", 6, y + 3); });
+  const step = Math.max(1, Math.floor(ROWS.length / 500));
+  const pts = []; for (let i = 0; i < ROWS.length; i += step) pts.push(ROWS[i]);
+  pts.forEach((r, idx) => { if (r.pump === "ON") { const x = pL + idx / (pts.length - 1) * pw; ctx.fillStyle = "rgba(16,185,129,.18)"; ctx.fillRect(x, pT, Math.max(2, pw / pts.length + 1), ph); } });
+  // S-curve estimate across sawtooth zones (smoothstep between clean neighbors)
+  let est = [], segA = null;
+  pts.forEach((r, idx) => {
+    if (sawSet.has(r.e)) { if (!segA) segA = pts[idx - 1] || null; return; }
+    if (segA) {
+      const N = 16;
+      for (let k = 1; k < N; k++) { const u = k / N, s = u * u * (3 - 2 * u); est.push([segA.e + (r.e - segA.e) * u, segA.pct + (r.pct - segA.pct) * s, idx]); }
+      segA = null;
+    }
+  });
+  ctx.strokeStyle = "#00bcd4"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+  ctx.beginPath(); let started = false;
+  est.forEach(([e, v]) => { const x = pL + (e - ROWS[0].e) / (ROWS[ROWS.length-1].e - ROWS[0].e) * pw; const y = pT + ph * (1 - (v - 20) / 80); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; });
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = "#0b66c3"; ctx.lineWidth = 2; ctx.beginPath();
+  pts.forEach((r, idx) => { const x = pL + idx / (pts.length - 1) * pw; const y = pT + ph * (1 - (Math.max(20, Math.min(100, r.pct)) - 20) / 80); idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  ctx.stroke();
+}
+
+// ================= RENDER: CYCLES + RAW =================
+function renderCycles() {
+  const cycles = []; let on = false, st = null;
+  ROWS.forEach(r => {
+    if (r.pump === "ON" && !on) { on = true; st = r; }
+    else if (r.pump === "OFF" && on) { on = false;
+      const gain = Math.max(0, r.pct - st.pct);
+      cycles.push({ s: st.ts.slice(5, 16), e: r.ts.slice(11, 16), a: st.pct.toFixed(1), b: r.pct.toFixed(1), L: Math.round(gain * LPCT), m: Math.max(1, Math.round((r.e - st.e) / 60)) }); }
+  });
+  document.getElementById("pillCycles").textContent = cycles.length + " ON";
+  document.getElementById("cyclesBody").innerHTML = cycles.slice(-15).reverse().map((c, i) =>
+    `<tr class="hover:bg-sky-50"><td class="py-2 px-3 font-bold text-[#034ea2]">#${cycles.length - i}</td><td class="py-2 px-3">${c.s} → ${c.e}</td><td class="py-2 px-3">${c.a}% → ${c.b}%</td><td class="py-2 px-3 font-bold text-emerald-700">+${c.L} L</td><td class="py-2 px-3 text-slate-500">${c.m} min</td></tr>`).join("")
+    || `<tr><td colspan="5" class="py-3 px-3 text-slate-500">No fill cycles yet.</td></tr>`;
+}
+let RAWC = [];
+function renderRaw() {
+  const q = (document.getElementById("rawQ").value || "").toLowerCase();
+  const pf = document.getElementById("rawP").value;
+  RAWC = [...ROWS].reverse().filter(r => (pf === "ALL" || r.pump === pf) && (!q || (r.ts + " " + r.pct).includes(q)));
+  const PS = 100, tp = Math.max(1, Math.ceil(RAWC.length / PS));
+  if (rawPage > tp) rawPage = tp;
+  const page = RAWC.slice((rawPage - 1) * PS, rawPage * PS);
+  document.getElementById("rawTotal").textContent = ROWS.length.toLocaleString();
+  document.getElementById("rawMatch").textContent = `Matching: ${RAWC.length.toLocaleString()} of ${ROWS.length.toLocaleString()}`;
+  document.getElementById("rawBody").innerHTML = page.map((r, i) => {
+    const d = (r.pct - (RAWC.indexOf(r) >= 0 && ROWS[ROWS.indexOf(r) - 1] ? ROWS[ROWS.indexOf(r) - 1].pct : r.pct)) * LPCT;
+    return `<tr class="${i % 2 ? "bg-blue-50/50" : ""}"><td class="py-1.5 px-3">#${ROWS.length - ((rawPage-1)*PS + i)}</td><td class="py-1.5 px-3 font-mono">${r.ts}</td><td class="py-1.5 px-3 text-right font-bold">${r.pct.toFixed(1)}</td><td class="py-1.5 px-3 text-right">${Math.round(r.pct * LPCT)}</td><td class="py-1.5 px-3 text-right">${(d>=0?"+":"")+d.toFixed(0)}</td><td class="py-1.5 px-3">${r.pump}</td></tr>`;
+  }).join("");
+  document.getElementById("rawPageInfo").textContent = `Page ${rawPage} of ${tp}`;
+  document.getElementById("btnRawPrev").disabled = rawPage <= 1;
+  document.getElementById("btnRawNext").disabled = rawPage >= tp;
+}
+
+// ================= LIVE + SYNC =================
+function renderLive(latest) {
+  const pct = parseFloat(latest.pct ?? latest.lvl ?? 0), pump = latest.pump || "OFF";
+  document.getElementById("waterFill").style.height = Math.max(4, Math.min(100, pct)) + "%";
+  document.getElementById("tankPct").textContent = pct.toFixed(1) + "%";
+  document.getElementById("tankL").textContent = Math.round(pct * LPCT).toLocaleString() + " L";
+  document.getElementById("kWater").textContent = Math.round(pct * LPCT).toLocaleString() + " L";
+  document.getElementById("kWaterSub").innerHTML = `<strong>${pct.toFixed(1)}%</strong> of 1,950 L`;
+  document.getElementById("kPump").textContent = pump;
+  document.getElementById("kPumpSub").textContent = "Mode: " + (latest.mode || "AUTO");
+  document.getElementById("kFault").textContent = latest.sf ? "ACTIVE" : "None";
+  document.getElementById("kFaultSub").textContent = latest.sf ? "filter froze the level" : "normal";
+  document.getElementById("kFw").textContent = "v" + (latest.fw || "?");
+  document.getElementById("kFwSub").textContent = (latest.part || "—") + " slot";
+  document.getElementById("pillMode").textContent = latest.mode || "—";
+  document.getElementById("pillBand").textContent = `~${CFG.trig}% → ~${CFG.cut}%`;
+  document.getElementById("pillFw").textContent = "v" + (latest.fw || "?");
+  document.getElementById("cutLine").style.bottom = CFG.cut + "%";
+  document.getElementById("trigLine").style.bottom = CFG.trig + "%";
+  document.getElementById("tankCap").textContent = `Cutoff: ${CFG.cut}% (${Math.round(CFG.cut*LPCT)} L) • Trigger: ${CFG.trig}% (${Math.round(CFG.trig*LPCT)} L)`;
+  const buf = Math.max(0, Math.round((pct - CFG.trig) * LPCT));
+  document.getElementById("kEta").innerHTML = pump === "ON"
+    ? "⚡ Pump is ACTIVE — filling toward " + CFG.cut + "% cutoff"
+    : (pct <= CFG.trig + 2 ? "🔮 Next auto-fill: IMMINENT (at/below " + CFG.trig + "%)" : "🔮 Buffer " + buf + " L above trigger");
+  document.getElementById("kLast").textContent = "Last reading: " + (latest.timestamp_iso || "—") + (latest.sf ? " • ⚠ sensor fault flag" : "");
+  const banner = document.getElementById("sfBanner");
+  const nowE = latest.ts || Math.floor(Date.now() / 1000);
+  let faultNow = false;
+  for (let i = ROWS.length - 1; i >= 0 && nowE - ROWS[i].e < 720; i--) {
+    if (ROWS[i].pump !== "ON" && sawSet.has(ROWS[i].e)) { faultNow = true; break; }
+  }
+  banner.style.display = (faultNow && pump === "ON") ? "block" : "none";
+}
+async function sendStop() {
+  try {
+    const lat = await (await fetch(`${FB}/tank/latest.json`)).json();
+    const pass = window.ADMIN_PASS || prompt("Admin password to sign STOP:");
+    if (!pass) return; window.ADMIN_PASS = pass;
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode((lat.nonce || "") + pass));
+    const resp = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+    await fetch(`${FB}/tank_cmd.json`, { method: "PUT", body: JSON.stringify({ cmd: "pump_off", resp, ts: Date.now() }) });
+    document.getElementById("sfBanner").innerHTML = "✅ STOP command sent (pump_off).";
+  } catch (e) { alert("STOP failed: " + e.message); }
+}
+async function syncFirebase() {
+  const st = document.getElementById("connStatus");
+  st.textContent = "syncing…";
+  try {
+    const [latest, cfg, hist] = await Promise.all([
+      fetch(`${FB}/tank/latest.json`).then(r => r.json()),
+      fetch(`${FB}/tank_cfg.json`).then(r => r.json()).catch(() => null),
+      fetch(`${FB}/tank_history.json`).then(r => r.json())
+    ]);
+    if (cfg && cfg.trig) CFG = { trig: cfg.trig, cut: cfg.cut, kw: cfg.kw || 2.0, rate: cfg.rate || 10 };
+    const parsed = Object.values(hist || {}).filter(r => r && r.timestamp_iso && r.pct !== undefined)
+      .sort((a, b) => new Date(a.timestamp_iso) - new Date(b.timestamp_iso))
+      .map(r => ({ ts: bd(Math.floor(new Date(r.timestamp_iso).getTime() / 1000)).ts, pct: parseFloat(r.pct), pump: r.pump || "OFF",
+                   date: r.timestamp_iso.slice(0, 10), hh: +r.timestamp_iso.slice(11, 13), e: Math.floor(new Date(r.timestamp_iso).getTime() / 1000) }));
+    ROWS = parsed;
+    buildEngine();
+    renderLive(latest || {});
+    renderDaily(); renderProfile(); renderClocks(); drawTimeline(); renderCycles(); rawPage = 1; renderRaw();
+    st.textContent = "live • " + ROWS.length.toLocaleString() + " readings • last sync " + new Date().toLocaleTimeString();
+  } catch (e) { st.textContent = "sync failed: " + e.message; }
+}
+window.onload = () => { syncFirebase(); setInterval(syncFirebase, 60000); };
+</script>
+</body>
+</html>
